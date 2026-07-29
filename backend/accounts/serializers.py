@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from .models import Portfolio
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -18,3 +19,22 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.save()
 
         return user
+    
+class PortfolioSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Portfolio
+        fields = [
+            "id",
+            "full_name",
+            "bio",
+            "skills",
+            "github",
+            "linkedin",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+        ]
