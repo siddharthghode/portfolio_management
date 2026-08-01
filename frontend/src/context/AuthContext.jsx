@@ -51,6 +51,18 @@ export function AuthProvider({ children }) {
     return me;
   }, []);
 
+  // Sync logout across tabs — if tokens are cleared in another tab,
+  // this tab detects the storage event and resets auth state.
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === "access_token" && !e.newValue) {
+        setUser(null);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
   const logout = useCallback(() => {
     authService.logout();
     setUser(null);
