@@ -38,35 +38,65 @@ export default function ActiveSessionsPage() {
   const [acting, setActing] = useState(false);
   const [success, setSuccess] = useState("");
 
-  const fetchSessions = useCallback(async () => {
-    setLoading(true);
+  const fetchSessions = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     setError("");
     try {
       const data = await sessionService.getSessions();
-      setSessions(data.results || []);
+      const list = Array.isArray(data) ? data : (data?.results || []);
+      setSessions(list);
     } catch {
-      setError("Failed to load sessions.");
+      if (!isBackground) setError("Failed to load sessions.");
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   }, []);
 
-  const fetchEvents = useCallback(async () => {
-    setLoading(true);
+  const fetchEvents = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     setError("");
     try {
       const data = await sessionService.getSecurityEvents();
-      setEvents(data.results || []);
+      const list = Array.isArray(data) ? data : (data?.results || []);
+      setEvents(list);
     } catch {
-      setError("Failed to load security events.");
+      if (!isBackground) setError("Failed to load security events.");
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (tab === "sessions") fetchSessions();
     else fetchEvents();
+  }, [tab, fetchSessions, fetchEvents]);
+
+  // Keep sessions in sync when switching between browser windows
+  useEffect(() => {
+    const handleFocus = () => {
+      if (tab === "sessions") fetchSessions(true);
+      else fetchEvents(true);
+    };
+
+    window.addEventListener("focus", handleFocus);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleFocus();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        handleFocus();
+      }
+    }, 15000);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearInterval(interval);
+    };
   }, [tab, fetchSessions, fetchEvents]);
 
   const handleRevoke = async () => {
@@ -97,7 +127,13 @@ export default function ActiveSessionsPage() {
 
   const fmt = (dt) => formatSessionDate(dt);
 
-  const otherCount = sessions.filter((s) => !s.is_current).length;
+  const sortedSessions = [...sessions].sort((a, b) => {
+    if (a.is_current && !b.is_current) return -1;
+    if (!a.is_current && b.is_current) return 1;
+    return new Date(b.last_seen_at || b.created_at) - new Date(a.last_seen_at || a.created_at);
+  });
+
+  const otherCount = sortedSessions.filter((s) => !s.is_current).length;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -149,7 +185,7 @@ export default function ActiveSessionsPage() {
             <p className="text-center text-gray-400 py-16">No active sessions found.</p>
           ) : (
             <div className="space-y-3 mb-6">
-              {sessions.map((s) => (
+              {sortedSessions.map((s) => (
                 <div
                   key={s.id}
                   className={`bg-white border rounded-xl p-4 flex items-start justify-between gap-4 ${

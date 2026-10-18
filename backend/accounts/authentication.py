@@ -52,6 +52,9 @@ class SessionJWTAuthentication(JWTAuthentication):
         if not session.is_active:
             raise AuthenticationFailed("Session has been revoked or expired.")
 
+        if session.user_id != user.id:
+            raise AuthenticationFailed("Session does not belong to this user.")
+
         # Throttled last_seen_at update
         now = timezone.now()
         if session.last_seen_at < now - timedelta(seconds=THROTTLE_SECONDS):

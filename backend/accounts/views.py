@@ -176,6 +176,14 @@ class MeView(APIView):
 
 # ── Sessions ──────────────────────────────────────────────────
 
+from rest_framework.pagination import PageNumberPagination
+
+class UserSessionPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
 class UserSessionViewSet(viewsets.ReadOnlyModelViewSet):
     """
     GET  /api/sessions/                    list active sessions
@@ -185,6 +193,7 @@ class UserSessionViewSet(viewsets.ReadOnlyModelViewSet):
     """
     serializer_class = UserSessionSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = UserSessionPagination
 
     def get_queryset(self):
         return UserSession.objects.filter(

@@ -413,3 +413,242 @@ class ExistingFunctionalityTests(TestCase):
     def test_projects_endpoint_accessible(self):
         resp = self.client.get("/api/projects/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+
+# ── Phase 5 Regression Tests: Multi-Browser Sessions ──────────
+
+class MultiBrowserSessionRegressionTests(TestCase):
+    """
+    Dedicated regression test suite covering all 12 scenarios from Phase 5:
+    1. Logging in once creates one session.
+    2. Logging in twice with the same account creates two distinct session IDs.
+    3. Both sessions are stored in the database.
+    4. The session-list endpoint returns both active sessions.
+    5. A second user cannot see the first user's sessions.
+    6. Two sessions with identical browser and operating-system metadata remain separate.
+    7. Refreshing one session's tokens does not create an unintended duplicate or replace another session.
+    8. Revoking one session does not revoke another session.
+    9. A revoked session cannot use an existing access token.
+    10. Expired and revoked sessions are excluded from the active list.
+    11. The existing /api/me/ and protected portfolio/project endpoints continue to work.
+    12. The React UI can render multiple sessions from the actual API response format.
+    """
+
+    CHROME_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36"
+    FIREFOX_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0"
+
+    def setUp(self):
+        self.user = make_user("multiuser", "securepass123", "multi@example.com")
+        self.other_user = make_user("otheruser", "otherpass123", "otheruser@example.com")
+        self.client = APIClient()
+
+    def _login_with_ua(self, user, ua, ip="127.0.0.1"):
+        client = APIClient()
+        resp = client.post(
+            "/api/login/",
+            {"username": user.username, "password": "securepass123" if user == self.user else "otherpass123"},
+            format="json",
+            HTTP_USER_AGENT=ua,
+            REMOTE_ADDR=ip,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['access']}")
+        return client, resp.data
+
+    def test_01_logging_in_once_creates_one_session(self):
+        client, data = self._login_with_ua(self.user, self.CHROME_UA)
+        self.assertEqual(UserSession.objects.filter(user=self.user).count(), 1)
+        session = UserSession.objects.get(user=self.user)
+        self.assertTrue(session.is_active)
+
+    def test_02_logging_in_twice_creates_two_distinct_session_ids(self):
+        client1, data1 = self._login_with_ua(self.user, self.CHROME_UA)
+        client2, data2 = self._login_with_ua(self.user, self.FIREFOX_UA)
+
+        sessions = UserSession.objects.filter(user=self.user)
+        self.assertEqual(sessions.count(), 2)
+        session_ids = [str(s.id) for s in sessions]
+        self.assertNotEqual(session_ids[0], session_ids[1])
+        self.assertNotEqual(data1["access"], data2["access"])
+
+    def test_03_both_sessions_are_stored_in_the_database(self):
+        self._login_with_ua(self.user, self.CHROME_UA)
+        self._login_with_ua(self.user, self.FIREFOX_UA)
+
+        chrome_sess = UserSession.objects.filter(user=self.user, browser__icontains="Chrome")
+        firefox_sess = UserSession.objects.filter(user=self.user, browser__icontains="Firefox")
+        self.assertTrue(chrome_sess.exists())
+        self.assertTrue(firefox_sess.exists())
+        self.assertEqual(UserSession.objects.filter(user=self.user, revoked_at__isnull=True).count(), 2)
+
+    def test_04_session_list_endpoint_returns_both_active_sessions(self):
+        client_chrome, data_chrome = self._login_with_ua(self.user, self.CHROME_UA)
+        client_firefox, data_firefox = self._login_with_ua(self.user, self.FIREFOX_UA)
+
+        # Chrome calls /api/sessions/
+        resp_chrome = client_chrome.get("/api/sessions/")
+        self.assertEqual(resp_chrome.status_code, status.HTTP_200_OK)
+        results_chrome = resp_chrome.data.get("results", resp_chrome.data)
+        self.assertEqual(len(results_chrome), 2)
+        current_in_chrome = [s for s in results_chrome if s["is_current"]]
+        self.assertEqual(len(current_in_chrome), 1)
+        self.assertIn("Chrome", current_in_chrome[0]["device_name"])
+
+        # Firefox calls /api/sessions/
+        resp_firefox = client_firefox.get("/api/sessions/")
+        self.assertEqual(resp_firefox.status_code, status.HTTP_200_OK)
+        results_firefox = resp_firefox.data.get("results", resp_firefox.data)
+        self.assertEqual(len(results_firefox), 2)
+        current_in_firefox = [s for s in results_firefox if s["is_current"]]
+        self.assertEqual(len(current_in_firefox), 1)
+        self.assertIn("Firefox", current_in_firefox[0]["device_name"])
+
+    def test_05_second_user_cannot_see_first_users_sessions(self):
+        client1, _ = self._login_with_ua(self.user, self.CHROME_UA)
+        client2, _ = self._login_with_ua(self.other_user, self.FIREFOX_UA)
+
+        resp2 = client2.get("/api/sessions/")
+        results2 = resp2.data.get("results", resp2.data)
+        self.assertEqual(len(results2), 1)
+        # Verify the returned session belongs strictly to other_user
+        session_id = results2[0]["id"]
+        self.assertEqual(str(UserSession.objects.get(id=session_id).user.id), str(self.other_user.id))
+
+        # Direct access to user1's session by user2 returns 404
+        user1_session = UserSession.objects.filter(user=self.user).first()
+        detail_resp = client2.get(f"/api/sessions/{user1_session.id}/")
+        self.assertEqual(detail_resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_06_two_sessions_with_identical_browser_and_os_metadata_remain_separate(self):
+        # Two logins with the exact same Chrome UA and IP
+        client1, data1 = self._login_with_ua(self.user, self.CHROME_UA)
+        client2, data2 = self._login_with_ua(self.user, self.CHROME_UA)
+
+        sessions = UserSession.objects.filter(user=self.user, revoked_at__isnull=True)
+        self.assertEqual(sessions.count(), 2)
+
+        resp = client1.get("/api/sessions/")
+        results = resp.data.get("results", resp.data)
+        self.assertEqual(len(results), 2)
+        self.assertNotEqual(results[0]["id"], results[1]["id"])
+
+    def test_07_refreshing_tokens_preserves_session_identity_and_does_not_duplicate(self):
+        client_chrome, data_chrome = self._login_with_ua(self.user, self.CHROME_UA)
+        client_firefox, data_firefox = self._login_with_ua(self.user, self.FIREFOX_UA)
+
+        # Refresh Chrome's token
+        refresh_resp = client_chrome.post("/api/token/refresh/", {"refresh": data_chrome["refresh"]}, format="json")
+        self.assertEqual(refresh_resp.status_code, status.HTTP_200_OK)
+        new_access = refresh_resp.data["access"]
+
+        # Verify DB still has exactly 2 sessions
+        self.assertEqual(UserSession.objects.filter(user=self.user, revoked_at__isnull=True).count(), 2)
+
+        # Chrome can still access sessions with the new access token
+        client_chrome.credentials(HTTP_AUTHORIZATION=f"Bearer {new_access}")
+        resp = client_chrome.get("/api/sessions/")
+        results = resp.data.get("results", resp.data)
+        self.assertEqual(len(results), 2)
+        current = [s for s in results if s["is_current"]]
+        self.assertEqual(len(current), 1)
+        self.assertIn("Chrome", current[0]["device_name"])
+
+    def test_08_revoking_one_session_does_not_revoke_another_session(self):
+        client_chrome, data_chrome = self._login_with_ua(self.user, self.CHROME_UA)
+        client_firefox, data_firefox = self._login_with_ua(self.user, self.FIREFOX_UA)
+
+        firefox_session = UserSession.objects.filter(user=self.user, browser__icontains="Firefox").first()
+        chrome_session = UserSession.objects.filter(user=self.user, browser__icontains="Chrome").first()
+
+        # Chrome revokes Firefox session
+        revoke_resp = client_chrome.post(f"/api/sessions/{firefox_session.id}/revoke/")
+        self.assertEqual(revoke_resp.status_code, status.HTTP_200_OK)
+
+        firefox_session.refresh_from_db()
+        chrome_session.refresh_from_db()
+
+        self.assertFalse(firefox_session.is_active)
+        self.assertIsNotNone(firefox_session.revoked_at)
+        self.assertTrue(chrome_session.is_active)
+        self.assertIsNone(chrome_session.revoked_at)
+
+    def test_09_revoked_session_cannot_use_existing_access_token(self):
+        client_chrome, data_chrome = self._login_with_ua(self.user, self.CHROME_UA)
+        client_firefox, data_firefox = self._login_with_ua(self.user, self.FIREFOX_UA)
+
+        firefox_session = UserSession.objects.filter(user=self.user, browser__icontains="Firefox").first()
+        # Revoke Firefox session
+        client_chrome.post(f"/api/sessions/{firefox_session.id}/revoke/")
+
+        # Firefox's existing access token should now be rejected on protected endpoints
+        resp = client_firefox.get("/api/me/")
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # Chrome's token continues to work
+        resp_chrome = client_chrome.get("/api/me/")
+        self.assertEqual(resp_chrome.status_code, status.HTTP_200_OK)
+
+    def test_10_expired_and_revoked_sessions_excluded_from_active_list(self):
+        client, _ = self._login_with_ua(self.user, self.CHROME_UA)
+        # Create an expired session manually
+        from .session_utils import generate_session_key, hash_session_key
+        UserSession.objects.create(
+            user=self.user,
+            session_key_hash=hash_session_key(generate_session_key()),
+            device_name="Expired Phone",
+            device_type="mobile",
+            expires_at=timezone.now() - timezone.timedelta(days=1),
+        )
+        # Create a revoked session
+        revoked = UserSession.objects.create(
+            user=self.user,
+            session_key_hash=hash_session_key(generate_session_key()),
+            device_name="Revoked Tablet",
+            device_type="tablet",
+            expires_at=timezone.now() + timezone.timedelta(days=7),
+            revoked_at=timezone.now(),
+        )
+
+        resp = client.get("/api/sessions/")
+        results = resp.data.get("results", resp.data)
+        self.assertEqual(len(results), 1)
+        self.assertIn("Chrome", results[0]["device_name"])
+
+    def test_11_existing_me_and_portfolio_endpoints_continue_to_work(self):
+        client, _ = self._login_with_ua(self.user, self.CHROME_UA)
+
+        me_resp = client.get("/api/me/")
+        self.assertEqual(me_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(me_resp.data["username"], "multiuser")
+
+        portfolio_resp = client.get("/api/portfolio/")
+        self.assertEqual(portfolio_resp.status_code, status.HTTP_200_OK)
+
+        projects_resp = client.get("/api/projects/")
+        self.assertEqual(projects_resp.status_code, status.HTTP_200_OK)
+
+    def test_12_react_ui_response_contract_and_structure(self):
+        client_chrome, _ = self._login_with_ua(self.user, self.CHROME_UA)
+        client_firefox, _ = self._login_with_ua(self.user, self.FIREFOX_UA)
+
+        resp = client_chrome.get("/api/sessions/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+        # Handle both paginated or array structures as React UI does
+        data = resp.data
+        results = data if isinstance(data, list) else data.get("results")
+        self.assertIsNotNone(results)
+        self.assertEqual(len(results), 2)
+
+        # Verify all fields expected by ActiveSessionsPage.jsx are present in each item
+        expected_fields = {
+            "id", "device_name", "device_type", "browser",
+            "operating_system", "ip_address", "created_at",
+            "last_seen_at", "is_current", "status"
+        }
+        for item in results:
+            self.assertTrue(expected_fields.issubset(set(item.keys())),
+                            f"Missing fields: {expected_fields - set(item.keys())}")
+            self.assertIn(item["status"], ["active", "revoked", "expired"])
+            self.assertIsInstance(item["is_current"], bool)
+
