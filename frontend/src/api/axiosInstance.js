@@ -43,8 +43,26 @@ const isAuthBypass = (url) =>
   url?.includes("/login/") ||
   url?.includes("/logout/");
 
+let isBrave = null;
+const checkBrave = async () => {
+  if (isBrave !== null) return isBrave;
+  try {
+    if (typeof navigator !== "undefined" && navigator?.brave && typeof navigator.brave.isBrave === "function") {
+      isBrave = await navigator.brave.isBrave();
+      return isBrave;
+    }
+  } catch {}
+  isBrave = false;
+  return false;
+};
+
 // ── Request Interceptor ──────────────────────────────────────
 axiosInstance.interceptors.request.use(async (config) => {
+  const brave = await checkBrave();
+  if (brave) {
+    config.headers["X-Client-Browser"] = "Brave";
+  }
+
   if (isAuthBypass(config.url)) return config;
 
   let token = storage.getAccessToken();

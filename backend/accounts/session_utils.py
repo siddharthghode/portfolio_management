@@ -13,17 +13,21 @@ from django.conf import settings
 
 # ── UA Parsing ───────────────────────────────────────────────
 
-def parse_user_agent(ua_string):
+def parse_user_agent(ua_string, client_browser=None):
     """
     Parse a User-Agent string into structured device metadata.
     Returns a dict with device_type, browser, operating_system, device_name.
+    Detects Brave when client_browser is passed.
     """
     if not ua_string:
+        device_name = "Unknown Device"
+        if client_browser and client_browser.lower() == "brave":
+            device_name = "Brave"
         return {
             "device_type": "unknown",
-            "browser": "",
+            "browser": "Brave" if client_browser and client_browser.lower() == "brave" else "",
             "operating_system": "",
-            "device_name": "Unknown Device",
+            "device_name": device_name,
         }
     try:
         import user_agents
@@ -43,6 +47,14 @@ def parse_user_agent(ua_string):
             # Only major version to avoid noise on new-device detection
             major = ua.browser.version_string.split(".")[0]
             browser = f"{browser} {major}".strip()
+
+        # Brave intentionally spoofs Chrome's UA header for anti-fingerprinting.
+        # If client verified Brave via navigator.brave.isBrave(), reflect it accurately.
+        if client_browser and client_browser.lower() == "brave":
+            if "Chrome" in browser:
+                browser = browser.replace("Chrome", "Brave")
+            else:
+                browser = f"Brave {browser}".strip()
 
         os_name = ua.os.family or ""
         if ua.os.version_string:
@@ -103,7 +115,8 @@ def create_session(user, request, refresh_token_lifetime):
     from accounts.models import UserSession
 
     ua_string = request.META.get("HTTP_USER_AGENT", "")[:500]
-    ua_data = parse_user_agent(ua_string)
+    client_browser = request.META.get("HTTP_X_CLIENT_BROWSER", "")
+    ua_data = parse_user_agent(ua_string, client_browser=client_browser)
     ip = get_client_ip(request)
     raw_key = generate_session_key()
     key_hash = hash_session_key(raw_key)

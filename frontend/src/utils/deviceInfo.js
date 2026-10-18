@@ -15,6 +15,16 @@ export const getDeviceIcon = (deviceType) => {
   return DEVICE_ICONS[deviceType?.toLowerCase()] || DEVICE_ICONS.unknown;
 };
 
+export const getBrowserIcon = (browserName, deviceType) => {
+  const b = browserName?.toLowerCase() || "";
+  if (b.includes("brave")) return "🦁";
+  if (b.includes("firefox")) return "🦊";
+  if (b.includes("chrome")) return "🌐";
+  if (b.includes("safari")) return "🧭";
+  if (b.includes("edge")) return "🌊";
+  return getDeviceIcon(deviceType);
+};
+
 export const formatSessionDate = (dateString) => {
   if (!dateString) return "—";
   try {

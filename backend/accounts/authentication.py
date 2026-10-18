@@ -55,6 +55,16 @@ class SessionJWTAuthentication(JWTAuthentication):
         if session.user_id != user.id:
             raise AuthenticationFailed("Session does not belong to this user.")
 
+        # If client verified as Brave but session was recorded with Chrome UA, update session
+        client_browser = request.META.get("HTTP_X_CLIENT_BROWSER", "")
+        if client_browser and client_browser.lower() == "brave" and "Chrome" in session.browser:
+            session.browser = session.browser.replace("Chrome", "Brave")
+            session.device_name = session.device_name.replace("Chrome", "Brave")
+            UserSession.objects.filter(pk=session.pk).update(
+                browser=session.browser,
+                device_name=session.device_name,
+            )
+
         # Throttled last_seen_at update
         now = timezone.now()
         if session.last_seen_at < now - timedelta(seconds=THROTTLE_SECONDS):

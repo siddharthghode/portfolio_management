@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import sessionService from "../services/sessionService";
-import { getDeviceIcon, formatSessionDate } from "../utils/deviceInfo";
+import { getDeviceIcon, getBrowserIcon, formatSessionDate } from "../utils/deviceInfo";
 
 const EVENT_LABELS = {
   LOGIN_SUCCESS: "Login",
@@ -193,10 +193,25 @@ export default function ActiveSessionsPage() {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <span className="text-2xl mt-0.5">{getDeviceIcon(s.device_type)}</span>
+                    <span className="text-2xl mt-0.5">{getBrowserIcon(s.browser, s.device_type)}</span>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-semibold text-gray-900">{s.device_name}</span>
+                        {s.browser?.toLowerCase().includes("brave") && (
+                          <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                            Brave
+                          </span>
+                        )}
+                        {s.browser?.toLowerCase().includes("chrome") && !s.browser?.toLowerCase().includes("brave") && (
+                          <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                            Chrome
+                          </span>
+                        )}
+                        {s.browser?.toLowerCase().includes("firefox") && (
+                          <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                            Firefox
+                          </span>
+                        )}
                         {s.is_current && (
                           <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                             Current

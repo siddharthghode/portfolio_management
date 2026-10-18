@@ -67,7 +67,8 @@ class LoginView(APIView):
 
         # Detect new device BEFORE creating session (compare against prior sessions)
         from .session_utils import parse_user_agent, get_client_ip
-        ua_data = parse_user_agent(request.META.get("HTTP_USER_AGENT", ""))
+        client_browser = request.META.get("HTTP_X_CLIENT_BROWSER", "")
+        ua_data = parse_user_agent(request.META.get("HTTP_USER_AGENT", ""), client_browser=client_browser)
         ip = get_client_ip(request)
         new_device = is_new_device(user, ua_data, ip)
 
