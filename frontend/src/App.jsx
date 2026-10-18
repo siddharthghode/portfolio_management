@@ -37,6 +37,8 @@ import RegisterPage from "./pages/RegisterPage";
 import DashboardPage from "./pages/DashboardPage";
 import PortfolioPage from "./pages/PortfolioPage";
 import ProjectsPage from "./pages/ProjectsPage";
+import AccountPage from "./pages/AccountPage";
+import ActiveSessionsPage from "./pages/ActiveSessionsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 
 export default function App() {
@@ -62,6 +64,9 @@ export default function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/portfolio" element={<PortfolioPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/account" element={<AccountPage />} />
+              <Route path="/sessions" element={<ActiveSessionsPage />} />
+              <Route path="/settings/sessions" element={<ActiveSessionsPage />} />
             </Route>
           </Route>
 

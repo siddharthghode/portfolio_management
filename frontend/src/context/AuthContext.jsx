@@ -51,9 +51,28 @@ export function AuthProvider({ children }) {
     return me;
   }, []);
 
-  const logout = useCallback(() => {
-    authService.logout();
+  const logout = useCallback(async () => {
+    await authService.logout();
     setUser(null);
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    if (authService.isAuthenticated()) {
+      try {
+        const me = await authService.getMe();
+        setUser(me);
+        return me;
+      } catch {
+        authService.logout();
+        setUser(null);
+      }
+    }
+  }, []);
+
+  const updateProfile = useCallback(async (data) => {
+    const updated = await authService.updateMe(data);
+    setUser(updated);
+    return updated;
   }, []);
 
   const value = {
@@ -62,6 +81,8 @@ export function AuthProvider({ children }) {
     loading,
     login,
     logout,
+    refreshUser,
+    updateProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

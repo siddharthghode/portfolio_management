@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+# Script to start both Django Backend and Vite Frontend servers
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+cleanup() {
+    echo ""
+    echo "Stopping servers..."
+    if [ -n "$BACKEND_PID" ]; then
+        kill "$BACKEND_PID" 2>/dev/null
+    fi
+    if [ -n "$FRONTEND_PID" ]; then
+        kill "$FRONTEND_PID" 2>/dev/null
+    fi
+    wait 2>/dev/null
+    echo "Servers stopped."
+    exit 0
+}
+
+trap cleanup INT TERM EXIT
+
+echo "Starting Django Backend..."
+if [ -d "$PROJECT_DIR/backend/venv" ]; then
+    PYTHON_BIN="$PROJECT_DIR/backend/venv/bin/python"
+else
+    PYTHON_BIN="python3"
+fi
+
+cd "$PROJECT_DIR/backend"
+"$PYTHON_BIN" manage.py runserver 127.0.0.1:8000 &
+BACKEND_PID=$!
+
+echo "Starting Vite Frontend..."
+cd "$PROJECT_DIR/frontend"
+npm run dev &
+FRONTEND_PID=$!
+
+echo ""
+echo "Backend running (PID $BACKEND_PID) on http://127.0.0.1:8000"
+echo "Frontend running (PID $FRONTEND_PID)"
+echo "Press Ctrl+C to stop both servers."
+echo ""
+
+wait

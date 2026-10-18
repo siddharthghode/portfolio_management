@@ -10,10 +10,24 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">
-        Welcome back, {user?.username} 👋
-      </h1>
-      <p className="text-gray-500 text-sm mb-8">Here's an overview of your portfolio.</p>
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">
+            Welcome back, {user?.first_name || user?.username} 👋
+          </h1>
+          <p className="text-gray-500 text-sm">
+            {user?.last_login
+              ? `Last login: ${new Date(user.last_login).toLocaleString()}`
+              : "Here's an overview of your portfolio."}
+          </p>
+        </div>
+        <Link
+          to="/account"
+          className="text-xs bg-white border border-gray-200 hover:border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg transition-colors font-medium shadow-xs"
+        >
+          My Account →
+        </Link>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
         <StatCard

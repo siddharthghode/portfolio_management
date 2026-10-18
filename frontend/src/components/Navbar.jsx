@@ -12,8 +12,8 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/login");
   };
 
@@ -39,10 +39,25 @@ export default function Navbar() {
           <NavLink to="/projects" className={linkClass}>
             Projects
           </NavLink>
+          <NavLink to="/account" className={linkClass}>
+            My Account
+          </NavLink>
+          <NavLink to="/sessions" className={linkClass}>
+            Sessions
+          </NavLink>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">{user?.username}</span>
+          <NavLink
+            to="/account"
+            className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors"
+            title="View My Account"
+          >
+            <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-semibold flex items-center justify-center">
+              {(user?.username || "U")[0].toUpperCase()}
+            </span>
+            <span className="text-sm font-medium text-gray-700">{user?.username}</span>
+          </NavLink>
           <button
             onClick={handleLogout}
             className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-md transition-colors"

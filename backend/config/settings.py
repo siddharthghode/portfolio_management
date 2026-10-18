@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-w#14vl$r9##9##99bdvju(d*234=dl2*+w&tm3wf@q5$x9jb1c
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -122,9 +122,9 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 REST_FRAMEWORK = {
-    # JWT: every request must include Authorization: Bearer <token>
+    # Custom JWT auth that also validates server-side session on every request
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "accounts.authentication.SessionJWTAuthentication",
     ),
 
     # Global default: all endpoints require authentication
@@ -149,7 +149,7 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "accounts.exceptions.custom_exception_handler",
 }
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=2),   # or days=1
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),  # Short-lived for security
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 
     "ROTATE_REFRESH_TOKENS": False,
@@ -159,7 +159,15 @@ SIMPLE_JWT = {
     "SIGNING_KEY": SECRET_KEY,
 
     "AUTH_HEADER_TYPES": ("Bearer",),
+
+    # Custom token classes that embed the session key hash (sid claim)
+    "ACCESS_TOKEN_CLASS": "accounts.tokens.SessionAccessToken",
+    "REFRESH_TOKEN_CLASS": "accounts.tokens.SessionRefreshToken",
 }
+
+# How often (seconds) to update last_seen_at on authenticated requests.
+# Avoids a DB write on every single API call.
+SESSION_ACTIVITY_THROTTLE_SECONDS = 60
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
